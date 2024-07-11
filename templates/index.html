@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraping Bot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+</head>
+<body>
+    <div class="container mt-5">
+        <div class="row">
+            <div class="col-md-8 offset-md-2">
+                <h1 class="text-center mb-4">Start Scraping</h1>
+                <form id="startForm">
+                    <div class="form-group">
+                        <label for="link">Link:</label>
+                        <input type="text" class="form-control" id="link" name="link" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="api_key">Binance API Key:</label>
+                        <input type="text" class="form-control" id="api_key" name="api_key" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="api_secret">Binance API Secret:</label>
+                        <input type="text" class="form-control" id="api_secret" name="api_secret" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="leverage">Leverage:</label>
+                        <input type="number" class="form-control" id="leverage" name="leverage" value="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="trader_portfolio_size">Trader Portfolio Size:</label>
+                        <input type="number" class="form-control" id="trader_portfolio_size" name="trader_portfolio_size" value="1000" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="your_portfolio_size">Your Portfolio Size:</label>
+                        <input type="number" class="form-control" id="your_portfolio_size" name="your_portfolio_size" value="1000" required>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="closeOnlyMode" name="closeOnlyMode">
+                            <label class="form-check-label" for="closeOnlyMode">
+                                Close Only Mode (Only close trades for this trader)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="reverseCopy" name="reverseCopy">
+                            <label class="form-check-label" for="reverseCopy">
+                                Reverse Copy (Copy trades in reverse direction)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="task_id">Task ID (optional):</label>
+                        <input type="text" class="form-control" id="task_id" name="task_id">
+                    </div>
+                    <button type="button" class="btn btn-primary btn-block" onclick="startScraping()">Start</button>
+                </form>
+
+                <h1 class="text-center mb-4 mt-5">Stop Scraping</h1>
+                <form id="stopForm">
+                    <div class="form-group">
+                        <label for="stop_task_id">Task ID:</label>
+                        <input type="text" class="form-control" id="stop_task_id" name="task_id" required>
+                    </div>
+                    <button type="button" class="btn btn-danger btn-block" onclick="stopScraping()">Stop</button>
+                </form>
+
+                <h1 class="text-center mb-4 mt-5">Running Scrapers</h1>
+                <ul id="scraperList" class="list-group">
+                    <!-- List of running scrapers will appear here -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Function to save form data in localStorage
+        function saveFormData() {
+            const formData = {
+                link: document.getElementById('link').value,
+                api_key: document.getElementById('api_key').value,
+                api_secret: document.getElementById('api_secret').value,
+                leverage: document.getElementById('leverage').value,
+                trader_portfolio_size: document.getElementById('trader_portfolio_size').value,
+                your_portfolio_size: document.getElementById('your_portfolio_size').value,
+                closeOnlyMode: document.getElementById('closeOnlyMode').checked,
+                reverseCopy: document.getElementById('reverseCopy').checked,
+                task_id: document.getElementById('task_id').value // Save task_id if entered
+            };
+            localStorage.setItem('formData', JSON.stringify(formData));
+        }
+
+        // Function to load saved form data from localStorage
+        function loadFormData() {
+            const savedFormData = JSON.parse(localStorage.getItem('formData'));
+            if (savedFormData) {
+                document.getElementById('link').value = savedFormData.link;
+                document.getElementById('api_key').value = savedFormData.api_key;
+                document.getElementById('api_secret').value = savedFormData.api_secret;
+                document.getElementById('leverage').value = savedFormData.leverage;
+                document.getElementById('trader_portfolio_size').value = savedFormData.trader_portfolio_size;
+                document.getElementById('your_portfolio_size').value = savedFormData.your_portfolio_size;
+                document.getElementById('closeOnlyMode').checked = savedFormData.closeOnlyMode;
+                document.getElementById('reverseCopy').checked = savedFormData.reverseCopy;
+                document.getElementById('task_id').value = savedFormData.task_id; // Load task_id if available
+            }
+        }
+
+        // Call loadFormData function when the page loads
+        document.addEventListener('DOMContentLoaded', function () {
+            loadFormData();
+        });
+
+        // Save form data when the user interacts with the form
+        document.getElementById('startForm').addEventListener('input', function () {
+            saveFormData();
+        });
+
+        async function startScraping() {
+            const form = document.getElementById('startForm');
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => { data[key] = value });
+            data.closeOnlyMode = document.getElementById('closeOnlyMode').checked;
+            data.reverseCopy = document.getElementById('reverseCopy').checked;
+
+            const response = await fetch('/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            console.log(result)
+            alert(result.status + "\nTask ID: " + result.task_id);
+            updateScraperList(result.task_id, data.link);
+        }
+
+        async function stopScraping() {
+            const form = document.getElementById('stopForm');
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => { data[key] = value });
+
+            const response = await fetch('/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+
+            const result = await response.json();
+            console.log(result)
+            alert(result.status);
+            removeScraperFromList(data.task_id);
+        }
+
+        function updateScraperList(taskId, link) {
+            const scraperList = document.getElementById('scraperList');
+            const li = document.createElement('li');
+            li.classList.add('list-group-item');
+            li.innerHTML = `Task ID: ${taskId}, Link: ${link}`;
+            scraperList.appendChild(li);
+        }
+
+        function removeScraperFromList(taskId) {
+            const scraperList = document.getElementById('scraperList');
+            const items = scraperList.getElementsByTagName('li');
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].innerHTML.includes(`Task ID: ${taskId}`)) {
+                    scraperList.removeChild(items[i]);
+                    break;
+                }
+            }
+        }
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-MrcW6ZMFYlzcLA8Nl+NtUVF0sA7MsXsP1UyJoMp4YLEuNSfAP+JcXn/tWtIaxVXM" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js" integrity="sha384-IQsoLXl5PILFhosVNubq5LC7Qb9DXgDA9i+tQ8Zj3iwWAwPtgFTxbJ8NT4GN1R8p" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js" integrity="sha384-cVKIPhGWiC2Al4u+LWgxfKTRIcfu0JTxR+EQDz/bgldoEyl4H0zUF0QKbrJ0EcQF" crossorigin="anonymous"></script>
+</body>
+</html>
