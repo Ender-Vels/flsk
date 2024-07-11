@@ -22,7 +22,7 @@ redis_client = redis.StrictRedis.from_url(redis_url)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
-running_scrapers_dict = {}
+running_scrapers_data = {}
 
 
 # Function to save running scrapers to Redis
@@ -510,7 +510,7 @@ def start_scraper():
     reverse_copy = False
 
     scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
-    running_scrapers[task_id] = scraper_task
+    running_scrapers_data[task_id] = scraper_task  # Update here
     threading.Thread(target=scraper_task.start_scraping, args=(close_only_mode, reverse_copy)).start()
     save_running_scrapers()
     redis_client.hset('scraperList', task_id, json.dumps(data))
@@ -518,7 +518,6 @@ def start_scraper():
 
 @app.route('/running', methods=['GET'])
 def running_scrapers():
-    # Отримати всі запущені скрапери з Redis
     running_scrapers = []
     for key in redis_client.hkeys('scraperList'):
         scraper_data = redis_client.hget('scraperList', key)
