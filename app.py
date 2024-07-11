@@ -16,9 +16,8 @@ import logging
 
 
 app = Flask(__name__)
-
 running_scrapers = {}
-
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class ScrapeTask:
     def __init__(self, task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size):
@@ -51,9 +50,9 @@ class ScrapeTask:
                 self.driver.quit()
             if self.timer:
                 self.timer.cancel()
-            print(f"Scraper {self.task_id} stopped.")
+            logging.info(f"Scraper {self.task_id} stopped.")
         else:
-            print(f"Scraper {self.task_id} is not running.")
+            logging.info(f"Scraper {self.task_id} is not running.")
 
     def initialize_driver(self):
         try:
@@ -65,9 +64,9 @@ class ScrapeTask:
             chrome_options.add_argument("--disable-dev-shm-usage")
             self.driver = webdriver.Chrome(options=chrome_options)
             self.driver.get(self.link)
-            print("WebDriver initialized.")
+            logging.info("WebDriver initialized.")
         except Exception as e:
-            print(f"Error initializing WebDriver: {e}")
+            logging.info(f"Error initializing WebDriver: {e}")
             self.running = False
 
     def initialize_binance_client(self):
@@ -498,4 +497,4 @@ def stop_scraping():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=5000)
