@@ -37,13 +37,13 @@ def save_running_scrapers():
                         "close_only_mode": task.close_only_mode,
                         "reverse_copy": task.reverse_copy,
                         "running": task.running
-                    } for task_id, task in running_scrapers_dict.items()}
+                    } for task_id, task in running_scrapers_data.items()}
     redis_client.set("running_scrapers", json.dumps(scrapers_data))
     logging.info("Running scrapers saved to Redis.")
 
 # Function to load running scrapers from Redis
 def load_running_scrapers():
-    global running_scrapers_dict
+    global running_scrapers_data
     scrapers_data = redis_client.get("running_scrapers")
     if scrapers_data:
         scrapers_data = json.loads(scrapers_data)
@@ -57,7 +57,7 @@ def load_running_scrapers():
             scraper_task.running = data['running']
             if scraper_task.running:
                 threading.Thread(target=scraper_task.start_scraping).start()
-            running_scrapers_dict[task_id] = scraper_task
+            running_scrapers_data[task_id] = scraper_task
         logging.info("Running scrapers loaded from Redis.")
     else:
         logging.info("No running scrapers found in Redis.")
