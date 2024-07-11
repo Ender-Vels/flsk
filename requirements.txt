@@ -5,3 +5,4 @@ Flask==3.0.3
 python_binance==1.0.19
 redis==5.0.7
 selenium==4.22.0
+gunicorn
