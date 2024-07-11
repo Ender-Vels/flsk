@@ -12,6 +12,7 @@ from binance.client import Client
 import time
 import re
 import redis
+import logging
 
 
 
@@ -42,27 +43,18 @@ class ScrapeTask:
         self.api_secret = api_secret
         self.min_order_quantity = {}
         self.initialize_binance_client()
-        self.add_to_redis()
-
-    def add_to_redis(self):
-        # Add task to Redis when initialized
-        redis_client.hset('running_scrapers', self.task_id, json.dumps({
-            'link': self.link,
-            'running': self.running
-        }))
 
     def stop(self):
-
         if self.running:
             self.running = False
             if self.driver:
                 self.driver.quit()
-                redis_client.hdel('running_scrapers', self.task_id)
             if self.timer:
                 self.timer.cancel()
-            print(f"Scraper {self.task_id} stopped.")
+            logging.info(f"Scraper {self.task_id} stopped.")
+            save_running_scrapers()
         else:
-            print(f"Scraper {self.task_id} is not running.")
+            logging.info(f"Scraper {self.task_id} is not running.")
 
     def initialize_driver(self):
         try:
@@ -96,6 +88,7 @@ class ScrapeTask:
             self.navigate_to_trade_history()
 
         self.running = True
+        save_running_scrapers()
         self.scrape_and_display_orders()
 
     def accept_cookies(self):
@@ -113,19 +106,19 @@ class ScrapeTask:
             move_to_trade_history = self.find_element_with_retry(By.CSS_SELECTOR, "#tab-tradeHistory > div")
             self.driver.execute_script("arguments[0].scrollIntoView(true);", move_to_trade_history)
             move_to_trade_history.click()
-            print("Navigated to trade history tab.")
+            logging.info("Navigated to trade history tab.")
             time.sleep(2)
         except Exception as e:
-            print(f"Trade history tab not found: {e}")
+            logging.error(f"Trade history tab not found: {e}")
             self.driver.refresh()
-            print("Page refreshed.")
+            logging.info("Page refreshed.")
             self.navigate_to_trade_history()
-
+            
     def scrape_and_display_orders(self):
         try:
             while self.running:
                 self.current_time = datetime.datetime.now().replace(second=0, microsecond=0)
-                print(f"Current time: {self.current_time}")
+                logging.info(f"Current time: {self.current_time}")
 
                 found_data = False
                 soup = BeautifulSoup(self.driver.page_source, 'html.parser')
@@ -164,40 +157,35 @@ class ScrapeTask:
                             }
                             self.all_orders.append(order_data)
                             found_data = True
-                            print(f"Added order: {order_id}")
+                            logging.info(f"Added order: {order_id}")
                             self.exec_order(symbol, side, quantity, realized_profit)
                             time.sleep(2)
 
                 if not found_data:
-                    print("No data found on current page.")
+                    logging.info("No data found on current page.")
                     self.go_to_first_page()
                     continue
 
                 next_page_button = self.find_element_with_retry(By.CSS_SELECTOR, "div.bn-pagination-next")
                 self.driver.execute_script("arguments[0].scrollIntoView(true);", next_page_button)
                 next_page_button.click()
-                print("Navigated to next page.")
+                logging.info("Navigated to next page.")
                 time.sleep(2)
                 self.current_page += 1
 
                 if not self.has_next_page():
-                    print("No next page found. Returning to first page.")
+                    logging.info("No next page found. Returning to first page.")
                     self.go_to_first_page()
                     time.sleep(2)
+                    self.current_page = 1
 
-                self.save_orders_to_file()
-
+            if not self.running:
+                logging.info(f"Scraping task {self.task_id} stopped.")
         except Exception as e:
-            print(f"Error scraping and displaying orders: {e}")
-        finally:
-            if self.driver:
-                self.initialize_driver()
-                self.accept_cookies()
-                self.navigate_to_trade_history()
-                self.running = True
-                self.scrape_and_display_orders()
-            else:
-                print("Scraping has been stopped.")
+            logging.error(f"Error in scraping task {self.task_id}: {e}")
+            self.running = False
+            self.driver.quit()
+            save_running_scrapers()
 
     def exec_order(self, symbol, side, quantity, realized_profit):
         client = self.binance_client
@@ -457,6 +445,43 @@ class ScrapeTask:
         return list(summarized_orders.values())
 
 
+# Function to save running scrapers to Redis
+def save_running_scrapers():
+    scrapers_data = {task_id: {
+                        "link": task.link,
+                        "api_key": task.api_key,
+                        "api_secret": task.api_secret,
+                        "leverage": task.leverage,
+                        "trader_portfolio_size": task.trader_portfolio_size,
+                        "your_portfolio_size": task.your_portfolio_size,
+                        "close_only_mode": task.close_only_mode,
+                        "reverse_copy": task.reverse_copy,
+                        "running": task.running
+                    } for task_id, task in running_scrapers.items()}
+    redis.set("running_scrapers", json.dumps(scrapers_data))
+    logging.info("Running scrapers saved to Redis.")
+
+def load_running_scrapers():
+    global running_scrapers
+    scrapers_data = redis.get("running_scrapers")
+    if scrapers_data:
+        scrapers_data = json.loads(scrapers_data)
+        for task_id, data in scrapers_data.items():
+            scraper_task = ScrapeTask(
+                task_id, data['link'], data['api_key'], data['api_secret'], data['leverage'],
+                data['trader_portfolio_size'], data['your_portfolio_size']
+            )
+            scraper_task.close_only_mode = data['close_only_mode']
+            scraper_task.reverse_copy = data['reverse_copy']
+            scraper_task.running = data['running']
+            if scraper_task.running:
+                threading.Thread(target=scraper_task.start_scraping).start()
+            running_scrapers[task_id] = scraper_task
+        logging.info("Running scrapers loaded from Redis.")
+
+
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -485,6 +510,9 @@ def start_scrape():
 
 
 
+
+
+
 @app.route('/running', methods=['GET'])
 def list_running_scrapers():
     running_tasks = [{'task_id': task_id, 'link': scraper_task.link, 'running': scraper_task.running} for task_id, scraper_task in running_scrapers.items()]
@@ -508,4 +536,5 @@ def stop_scraping():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    load_running_scrapers()
+    app.run(debug=True, host='0.0.0.0', port=5000)
