@@ -53,9 +53,9 @@ class ScrapeTask:
                 self.driver.quit()
             if self.timer:
                 self.timer.cancel()
-            print(f"Scraper {self.task_id} stopped.")
+            logging.info(f"Scraper {self.task_id} stopped.")
         else:
-            print(f"Scraper {self.task_id} is not running.")
+            logging.info(f"Scraper {self.task_id} is not running.")
 
     def initialize_driver(self):
         try:
@@ -67,9 +67,9 @@ class ScrapeTask:
             chrome_options.add_argument("--disable-dev-shm-usage")
             self.driver = webdriver.Chrome(options=chrome_options)
             self.driver.get(self.link)
-            print("WebDriver initialized.")
+            logging.info("WebDriver initialized.")
         except Exception as e:
-            print(f"Error initializing WebDriver: {e}")
+            logging.info(f"Error initializing WebDriver: {e}")
             self.running = False
 
     def initialize_binance_client(self):
@@ -97,22 +97,22 @@ class ScrapeTask:
             time.sleep(2)
             accept_btn = self.find_element_with_retry(By.ID, "onetrust-accept-btn-handler")
             accept_btn.click()
-            print("Accepted cookies.")
+            logging.info("Accepted cookies.")
             time.sleep(2)
         except Exception as e:
-            print(f"Error accepting cookies: {e}")
+            logging.info(f"Error accepting cookies: {e}")
 
     def navigate_to_trade_history(self):
         try:
             move_to_trade_history = self.find_element_with_retry(By.CSS_SELECTOR, "#tab-tradeHistory > div")
             self.driver.execute_script("arguments[0].scrollIntoView(true);", move_to_trade_history)
             move_to_trade_history.click()
-            print("Navigated to trade history tab.")
+            logging.info("Navigated to trade history tab.")
             time.sleep(2)
         except Exception as e:
-            print(f"Trade history tab not found: {e}")
+            logging.info(f"Trade history tab not found: {e}")
             self.driver.refresh()
-            print("Page refreshed.")
+            logging.info("Page refreshed.")
             self.navigate_to_trade_history()
 
     def scrape_and_display_orders(self):
@@ -158,23 +158,23 @@ class ScrapeTask:
                             }
                             self.all_orders.append(order_data)
                             found_data = True
-                            print(f"Added order: {order_id}")
+                            logging.info(f"Added order: {order_id}")
                             self.exec_order(symbol, side, quantity, realized_profit)
 
                 if not found_data:
-                    print("No data found on current page.")
+                    logging.info("No data found on current page.")
                     self.go_to_first_page()
                     continue
 
                 next_page_button = self.find_element_with_retry(By.CSS_SELECTOR, "div.bn-pagination-next")
                 self.driver.execute_script("arguments[0].scrollIntoView(true);", next_page_button)
                 next_page_button.click()
-                print("Navigated to next page.")
+                logging.info("Navigated to next page.")
                 time.sleep(2)
                 self.current_page += 1
 
                 if not self.has_next_page():
-                    print("No next page found. Returning to first page.")
+                    logging.info("No next page found. Returning to first page.")
                     self.go_to_first_page()
                     time.sleep(2)
 
@@ -190,7 +190,7 @@ class ScrapeTask:
                 self.running = True
                 self.scrape_and_display_orders()
             else:
-                print("Scraping has been stopped.")
+                logging.info("Scraping has been stopped.")
 
     def exec_order(self, symbol, side, quantity, realized_profit):
         client = self.binance_client
@@ -213,9 +213,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
 
         elif side in ['Close Long', 'Sell/Short'] and realized_profit != 0.0:
             quantity = float(quantity)
@@ -236,9 +236,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
 
         elif side in ['Open Short', 'Sell/Short'] and realized_profit == 0.0:
             side = 'SELL'
@@ -259,9 +259,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
 
         elif side in ['Close Short', 'Buy/Long'] and realized_profit != 0.0:
             quantity = float(quantity)
@@ -282,9 +282,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
         if self.close_only_mode:
             if side in ['Open Long', 'Buy/Long'] and realized_profit == 0.0:
                 return  # Ignore this order in close only mode
@@ -311,9 +311,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
 
             elif side in ['Close Long', 'Sell/Short'] and realized_profit != 0.0:
                 side = 'BUY'
@@ -334,9 +334,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
 
             elif side in ['Open Short', 'Buy/Long'] and realized_profit == 0.0:
                 side = 'BUY'
@@ -357,9 +357,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
             elif side in ['Close Short', 'Buy/Long'] and realized_profit != 0.0:
                 side = 'SELL'
                 position_side = 'LONG'
@@ -379,9 +379,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
 
     def find_element_with_retry(self, by, selector, max_attempts=3):
         attempts = 0
@@ -391,7 +391,7 @@ class ScrapeTask:
                 return element
             except Exception as e:
                 attempts += 1
-                print(f"Error finding element {selector} (Attempt {attempts}/{max_attempts}): {e}")
+                logging.info(f"Error finding element {selector} (Attempt {attempts}/{max_attempts}): {e}")
                 time.sleep(2)
         return None
 
@@ -409,7 +409,7 @@ class ScrapeTask:
             self.navigate_to_trade_history()
             self.current_page = 1
         except Exception as e:
-            print(f"Error navigating to first page: {e}")
+            logging.info(f"Error navigating to first page: {e}")
 
     def add_space_before_and_remove_perpetual(self, text):
         text = re.sub(r" ?Perpetual", "", text)
@@ -419,7 +419,7 @@ class ScrapeTask:
         summarized_orders = self.summarize_orders(self.all_orders)
         with open('trade_history.json', 'w') as json_file:
             json.dump(summarized_orders, json_file, indent=4)
-        print("Orders saved to file.")
+        logging.info("Orders saved to file.")
         if self.timer:
             self.timer.cancel()
         self.timer = threading.Timer(300, self.delete_orders_from_file)
@@ -429,7 +429,7 @@ class ScrapeTask:
         self.all_orders.clear()
         with open('trade_history.json', 'w') as json_file:
             json.dump(self.all_orders, json_file, indent=4)
-        print("Orders deleted from file after 5 minutes.")
+        logging.info("Orders deleted from file after 5 minutes.")
 
     def summarize_orders(self, orders):
         summarized_orders = {}
