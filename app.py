@@ -22,7 +22,7 @@ redis_client = redis.StrictRedis.from_url(redis_url)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
-running_scrapers = {}
+running_scrapers_dict = {}
 
 
 # Function to save running scrapers to Redis
@@ -37,13 +37,13 @@ def save_running_scrapers():
                         "close_only_mode": task.close_only_mode,
                         "reverse_copy": task.reverse_copy,
                         "running": task.running
-                    } for task_id, task in running_scrapers.items()}
+                    } for task_id, task in running_scrapers_dict.items()}
     redis_client.set("running_scrapers", json.dumps(scrapers_data))
     logging.info("Running scrapers saved to Redis.")
 
 # Function to load running scrapers from Redis
 def load_running_scrapers():
-    global running_scrapers
+    global running_scrapers_dict
     scrapers_data = redis_client.get("running_scrapers")
     if scrapers_data:
         scrapers_data = json.loads(scrapers_data)
@@ -57,7 +57,7 @@ def load_running_scrapers():
             scraper_task.running = data['running']
             if scraper_task.running:
                 threading.Thread(target=scraper_task.start_scraping).start()
-            running_scrapers[task_id] = scraper_task
+            running_scrapers_dict[task_id] = scraper_task
         logging.info("Running scrapers loaded from Redis.")
     else:
         logging.info("No running scrapers found in Redis.")
@@ -498,23 +498,29 @@ def index():
 
 @app.route('/start', methods=['POST'])
 def start_scraper():
-    data = request.json
-    task_id = data['task_id']
-    link = data['link']
-    api_key = data['api_key']
-    api_secret = data['api_secret']
-    leverage = data['leverage']
-    trader_portfolio_size = data['trader_portfolio_size']
-    your_portfolio_size = data['your_portfolio_size']
-    close_only_mode = False
-    reverse_copy = False
+    link = request.form['link']
+    api_key = request.form['api_key']
+    api_secret = request.form['api_secret']
+    leverage = float(request.form['leverage'])
+    trader_portfolio_size = float(request.form['trader_portfolio_size'])
+    your_portfolio_size = float(request.form['your_portfolio_size'])
+    close_only_mode = 'close_only_mode' in request.form
+    reverse_copy = 'reverse_copy' in request.form
 
-    scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
-    running_scrapers[task_id] = scraper_task
-    threading.Thread(target=scraper_task.start_scraping, args=(close_only_mode, reverse_copy)).start()
-    save_running_scrapers()
-    redis_client.hset('scraperList', task_id, json.dumps(data))
-    return jsonify({"status": "Scraper started", "task_id": task_id})
+    task_id = request.form['task_id']
+    if task_id not in running_scrapers_dict:
+        scraper_task = ScrapeTask(
+            task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size
+        )
+        scraper_task.close_only_mode = close_only_mode
+        scraper_task.reverse_copy = reverse_copy
+        threading.Thread(target=scraper_task.start_scraping).start()
+        running_scrapers_dict[task_id] = scraper_task
+        save_running_scrapers()
+        return jsonify({'success': True, 'message': f'Scraper started with ID: {task_id}'})
+    else:
+        return jsonify({'success': False, 'message': f'Scraper with ID {task_id} is already running.'})
+
 
 @app.route('/running', methods=['GET'])
 def running_scrapers():
@@ -530,8 +536,16 @@ def running_scrapers():
 def stop_scraper():
     data = request.json
     task_id = data['task_id']
-    redis_client.hdel('scraperList', task_id)
-    return jsonify({"status": "Scraper stopped", "task_id": task_id})
+    
+    # Отримання інформації про запущені скрапери з Redis
+    running_scrapers = redis_client.hgetall('scraperList')
+    
+    if task_id.encode('utf-8') in running_scrapers:
+        # Видалення скрапера з Redis за task_id
+        redis_client.hdel('scraperList', task_id)
+        return jsonify({"status": "Scraper stopped", "task_id": task_id})
+    else:
+        return jsonify({"status": "Scraper not found", "task_id": task_id}), 404
 
 
 
