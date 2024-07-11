@@ -506,8 +506,8 @@ def start_scraper():
     leverage = data['leverage']
     trader_portfolio_size = data['trader_portfolio_size']
     your_portfolio_size = data['your_portfolio_size']
-    close_only_mode = data['close_only_mode']
-    reverse_copy = data['reverse_copy']
+    close_only_mode = False
+    reverse_copy = False
 
     scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
     running_scrapers[task_id] = scraper_task
