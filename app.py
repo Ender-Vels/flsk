@@ -15,12 +15,52 @@ import redis
 import logging
 
 
-
 app = Flask(__name__)
+# Configure Redis connection
+redis_url = "redis://red-cq7ej0aj1k6c7396kfug:6379"
+redis_client = redis.StrictRedis.from_url(redis_url)
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
 running_scrapers = {}
 
-redis_url = 'redis://red-cq7ej0aj1k6c7396kfug:6379'
-redis_client = redis.from_url(redis_url)
+
+# Function to save running scrapers to Redis
+def save_running_scrapers():
+    scrapers_data = {task_id: {
+                        "link": task.link,
+                        "api_key": task.api_key,
+                        "api_secret": task.api_secret,
+                        "leverage": task.leverage,
+                        "trader_portfolio_size": task.trader_portfolio_size,
+                        "your_portfolio_size": task.your_portfolio_size,
+                        "close_only_mode": task.close_only_mode,
+                        "reverse_copy": task.reverse_copy,
+                        "running": task.running
+                    } for task_id, task in running_scrapers.items()}
+    redis_client.set("running_scrapers", json.dumps(scrapers_data))
+    logging.info("Running scrapers saved to Redis.")
+
+# Function to load running scrapers from Redis
+def load_running_scrapers():
+    global running_scrapers
+    scrapers_data = redis_client.get("running_scrapers")
+    if scrapers_data:
+        scrapers_data = json.loads(scrapers_data)
+        for task_id, data in scrapers_data.items():
+            scraper_task = ScrapeTask(
+                task_id, data['link'], data['api_key'], data['api_secret'], data['leverage'],
+                data['trader_portfolio_size'], data['your_portfolio_size']
+            )
+            scraper_task.close_only_mode = data['close_only_mode']
+            scraper_task.reverse_copy = data['reverse_copy']
+            scraper_task.running = data['running']
+            if scraper_task.running:
+                threading.Thread(target=scraper_task.start_scraping).start()
+            running_scrapers[task_id] = scraper_task
+        logging.info("Running scrapers loaded from Redis.")
+    else:
+        logging.info("No running scrapers found in Redis.")
 
 class ScrapeTask:
     def __init__(self, task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size):
@@ -44,15 +84,17 @@ class ScrapeTask:
         self.min_order_quantity = {}
         self.initialize_binance_client()
 
+
     def stop(self):
+
         if self.running:
             self.running = False
             if self.driver:
                 self.driver.quit()
             if self.timer:
                 self.timer.cancel()
-            logging.info(f"Scraper {self.task_id} stopped.")
-            save_running_scrapers()
+                logging.info(f"Scraper {self.task_id} stopped.")
+                save_running_scrapers()
         else:
             logging.info(f"Scraper {self.task_id} is not running.")
 
@@ -66,17 +108,17 @@ class ScrapeTask:
             chrome_options.add_argument("--disable-dev-shm-usage")
             self.driver = webdriver.Chrome(options=chrome_options)
             self.driver.get(self.link)
-            print("WebDriver initialized.")
+            logging.info("WebDriver initialized.")
         except Exception as e:
-            print(f"Error initializing WebDriver: {e}")
+            logging.info(f"Error initializing WebDriver: {e}")
             self.running = False
 
     def initialize_binance_client(self):
         try:
             self.binance_client = Client(self.api_key, self.api_secret)
-            print("Binance client initialized.")
+            logging.info("Binance client initialized.")
         except Exception as e:
-            print(f"Error initializing Binance client: {e}")
+            logging.info(f"Error initializing Binance client: {e}")
             self.running = False
 
     def start_scraping(self, close_only_mode=False, reverse_copy=False):
@@ -96,10 +138,10 @@ class ScrapeTask:
             time.sleep(2)
             accept_btn = self.find_element_with_retry(By.ID, "onetrust-accept-btn-handler")
             accept_btn.click()
-            print("Accepted cookies.")
+            logging.info("Accepted cookies.")
             time.sleep(2)
         except Exception as e:
-            print(f"Error accepting cookies: {e}")
+            logging.error(f"Error accepting cookies: {e}")
 
     def navigate_to_trade_history(self):
         try:
@@ -109,7 +151,7 @@ class ScrapeTask:
             logging.info("Navigated to trade history tab.")
             time.sleep(2)
         except Exception as e:
-            logging.error(f"Trade history tab not found: {e}")
+            logging.info(f"Trade history tab not found: {e}")
             self.driver.refresh()
             logging.info("Page refreshed.")
             self.navigate_to_trade_history()
@@ -159,7 +201,6 @@ class ScrapeTask:
                             found_data = True
                             logging.info(f"Added order: {order_id}")
                             self.exec_order(symbol, side, quantity, realized_profit)
-                            time.sleep(2)
 
                 if not found_data:
                     logging.info("No data found on current page.")
@@ -177,15 +218,21 @@ class ScrapeTask:
                     logging.info("No next page found. Returning to first page.")
                     self.go_to_first_page()
                     time.sleep(2)
-                    self.current_page = 1
 
-            if not self.running:
-                logging.info(f"Scraping task {self.task_id} stopped.")
+                self.save_orders_to_file()
+
         except Exception as e:
-            logging.error(f"Error in scraping task {self.task_id}: {e}")
-            self.running = False
-            self.driver.quit()
+            logging.info(f"Error scraping and displaying orders: {e}")
             save_running_scrapers()
+        finally:
+            if self.driver:
+                self.initialize_driver()
+                self.accept_cookies()
+                self.navigate_to_trade_history()
+                self.running = True
+                self.scrape_and_display_orders()
+            else:
+                logging.info("Scraping has been stopped.")
 
     def exec_order(self, symbol, side, quantity, realized_profit):
         client = self.binance_client
@@ -208,9 +255,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
 
         elif side in ['Close Long', 'Sell/Short'] and realized_profit != 0.0:
             quantity = float(quantity)
@@ -231,9 +278,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
 
         elif side in ['Open Short', 'Sell/Short'] and realized_profit == 0.0:
             side = 'SELL'
@@ -254,9 +301,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
 
         elif side in ['Close Short', 'Buy/Long'] and realized_profit != 0.0:
             quantity = float(quantity)
@@ -277,9 +324,9 @@ class ScrapeTask:
                                             type='MARKET',
                                             leverage=int(self.leverage),
                                             quantity=quantity)
-                print(f"Executed order: {symbol} {side} {quantity}")
+                logging.info(f"Executed order: {symbol} {side} {quantity}")
             except Exception as e:
-                print(f"Error executing order: {e}")
+                logging.info(f"Error executing order: {e}")
         if self.close_only_mode:
             if side in ['Open Long', 'Buy/Long'] and realized_profit == 0.0:
                 return  # Ignore this order in close only mode
@@ -306,9 +353,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
 
             elif side in ['Close Long', 'Sell/Short'] and realized_profit != 0.0:
                 side = 'BUY'
@@ -329,9 +376,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
 
             elif side in ['Open Short', 'Buy/Long'] and realized_profit == 0.0:
                 side = 'BUY'
@@ -352,9 +399,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
             elif side in ['Close Short', 'Buy/Long'] and realized_profit != 0.0:
                 side = 'SELL'
                 position_side = 'LONG'
@@ -374,9 +421,9 @@ class ScrapeTask:
                                                 type='MARKET',
                                                 leverage=int(self.leverage),
                                                 quantity=quantity)
-                    print(f"Executed order: {symbol} {side} {quantity}")
+                    logging.info(f"Executed order: {symbol} {side} {quantity}")
                 except Exception as e:
-                    print(f"Error executing order: {e}")
+                    logging.info(f"Error executing order: {e}")
 
     def find_element_with_retry(self, by, selector, max_attempts=3):
         attempts = 0
@@ -386,7 +433,7 @@ class ScrapeTask:
                 return element
             except Exception as e:
                 attempts += 1
-                print(f"Error finding element {selector} (Attempt {attempts}/{max_attempts}): {e}")
+                logging.info(f"Error finding element {selector} (Attempt {attempts}/{max_attempts}): {e}")
                 time.sleep(2)
         return None
 
@@ -404,7 +451,7 @@ class ScrapeTask:
             self.navigate_to_trade_history()
             self.current_page = 1
         except Exception as e:
-            print(f"Error navigating to first page: {e}")
+            logging.info(f"Error navigating to first page: {e}")
 
     def add_space_before_and_remove_perpetual(self, text):
         text = re.sub(r" ?Perpetual", "", text)
@@ -414,7 +461,7 @@ class ScrapeTask:
         summarized_orders = self.summarize_orders(self.all_orders)
         with open('trade_history.json', 'w') as json_file:
             json.dump(summarized_orders, json_file, indent=4)
-        print("Orders saved to file.")
+        logging.info("Orders saved to file.")
         if self.timer:
             self.timer.cancel()
         self.timer = threading.Timer(300, self.delete_orders_from_file)
@@ -424,7 +471,7 @@ class ScrapeTask:
         self.all_orders.clear()
         with open('trade_history.json', 'w') as json_file:
             json.dump(self.all_orders, json_file, indent=4)
-        print("Orders deleted from file after 5 minutes.")
+        logging.info("Orders deleted from file after 5 minutes.")
 
     def summarize_orders(self, orders):
         summarized_orders = {}
@@ -445,99 +492,49 @@ class ScrapeTask:
         return list(summarized_orders.values())
 
 
-# Function to save running scrapers to Redis
-def save_running_scrapers():
-    scrapers_data = {task_id: {
-                        "link": task.link,
-                        "api_key": task.api_key,
-                        "api_secret": task.api_secret,
-                        "leverage": task.leverage,
-                        "trader_portfolio_size": task.trader_portfolio_size,
-                        "your_portfolio_size": task.your_portfolio_size,
-                        "close_only_mode": task.close_only_mode,
-                        "reverse_copy": task.reverse_copy,
-                        "running": task.running
-                    } for task_id, task in running_scrapers.items()}
-    redis.set("running_scrapers", json.dumps(scrapers_data))
-    logging.info("Running scrapers saved to Redis.")
-
-def load_running_scrapers():
-    global running_scrapers
-    scrapers_data = redis_client.get("running_scrapers")
-    if scrapers_data:
-        scrapers_data = json.loads(scrapers_data)
-        for task_id, data in scrapers_data.items():
-            scraper_task = ScrapeTask(
-                task_id, data['link'], data['api_key'], data['api_secret'], data['leverage'],
-                data['trader_portfolio_size'], data['your_portfolio_size']
-            )
-            scraper_task.close_only_mode = data['close_only_mode']
-            scraper_task.reverse_copy = data['reverse_copy']
-            scraper_task.running = data['running']
-            if scraper_task.running:
-                threading.Thread(target=scraper_task.start_scraping).start()
-            running_scrapers[task_id] = scraper_task
-        logging.info("Running scrapers loaded from Redis.")
-    else:
-        logging.info("No running scrapers found in Redis.")
-
-
-
-
-
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/start', methods=['POST'])
-def start_scrape():
-    form_data = request.json
-    task_id = form_data['task_id']  # Отримати task_id з JSON даних
-    print(task_id)
-    link = form_data['link']
-    api_key = form_data['api_key']
-    api_secret = form_data['api_secret']
-    leverage = form_data['leverage']
-    trader_portfolio_size = form_data['trader_portfolio_size']
-    your_portfolio_size = form_data['your_portfolio_size']
-    close_only_mode = False
-    reverse_copy = False
+def start_scraper():
+    data = request.json
+    task_id = data['task_id']
+    link = data['link']
+    api_key = data['api_key']
+    api_secret = data['api_secret']
+    leverage = data['leverage']
+    trader_portfolio_size = data['trader_portfolio_size']
+    your_portfolio_size = data['your_portfolio_size']
+    close_only_mode = data['close_only_mode']
+    reverse_copy = data['reverse_copy']
 
-    if task_id not in running_scrapers:
-        scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
-        running_scrapers[task_id] = scraper_task
-        threading.Thread(target=scraper_task.start_scraping, args=(close_only_mode, reverse_copy)).start()
-        return jsonify({'task_id':task_id})
-    else:
-        return jsonify({'status': 'error', 'message': f'Scraper {task_id} is already running.'})
-
-
-
-
-
+    scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
+    running_scrapers[task_id] = scraper_task
+    threading.Thread(target=scraper_task.start_scraping, args=(close_only_mode, reverse_copy)).start()
+    save_running_scrapers()
+    redis_client.hset('scraperList', task_id, json.dumps(data))
+    return jsonify({"status": "Scraper started", "task_id": task_id})
 
 @app.route('/running', methods=['GET'])
-def list_running_scrapers():
-    running_tasks = [{'task_id': task_id, 'link': scraper_task.link, 'running': scraper_task.running} for task_id, scraper_task in running_scrapers.items()]
-    return jsonify(running_tasks)
+def running_scrapers():
+    # Отримати всі запущені скрапери з Redis
+    running_scrapers = []
+    for key in redis_client.hkeys('scraperList'):
+        scraper_data = redis_client.hget('scraperList', key)
+        running_scrapers.append(json.loads(scraper_data))
+    return jsonify(running_scrapers)
 
 
 @app.route('/stop', methods=['POST'])
-def stop_scraping():
-    if request.method == 'POST':
-        data = request.json  # Extract JSON data from request
-        task_id = data.get('task_id')
-
-        if task_id in running_scrapers:
-            scraper_task = running_scrapers[task_id]
-            scraper_task.stop()  # Implement stop_scraping method in ScrapeTask class
-            del running_scrapers[task_id]
-            return jsonify({'status': 'success', 'message': f'Scraper {task_id} stopped.'}), 200
-        else:
-            return jsonify({'status': 'error', 'message': f'Scraper {task_id} is not running.'}), 404
+def stop_scraper():
+    data = request.json
+    task_id = data['task_id']
+    redis_client.hdel('scraperList', task_id)
+    return jsonify({"status": "Scraper stopped", "task_id": task_id})
 
 
 
 if __name__ == '__main__':
     load_running_scrapers()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000) 
