@@ -18,7 +18,7 @@ import logging
 app = Flask(__name__)
 running_scrapers = {}
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-redis_url = 'redis://red-cq7ej0aj1k6c7396kfug:6379'
+redis_url = 'redis://red-cq84086ehbks73fakmug:6379'
 redis_client = redis.from_url(redis_url)
 
 class ScrapeTask:
