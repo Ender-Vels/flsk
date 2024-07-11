@@ -16,7 +16,8 @@ import logging
 
 
 app = Flask(__name__)
-
+redis_url = "redis://red-cq7ej0aj1k6c7396kfug:6379"
+redis_client = redis.StrictRedis.from_url(redis_url)
 running_scrapers = {}
 
 
@@ -47,6 +48,7 @@ class ScrapeTask:
 
         if self.running:
             self.running = False
+            redis_client.hdel('running_scrapers', self.task_id)
             if self.driver:
                 self.driver.quit()
             if self.timer:
@@ -87,6 +89,7 @@ class ScrapeTask:
             self.navigate_to_trade_history()
 
         self.running = True
+        redis_client.hset('running_scrapers', self.task_id, json.dumps({'link': self.link, 'running': True}))
         self.scrape_and_display_orders()
 
     def accept_cookies(self):
@@ -454,8 +457,7 @@ def index():
 @app.route('/start', methods=['POST'])
 def start_scrape():
     form_data = request.json
-    task_id = form_data['task_id']  # Отримати task_id з JSON даних
-    print(task_id)
+    task_id = form_data['task_id']
     link = form_data['link']
     api_key = form_data['api_key']
     api_secret = form_data['api_secret']
@@ -465,37 +467,36 @@ def start_scrape():
     close_only_mode = False
     reverse_copy = False
 
-    if task_id not in running_scrapers:
+    if task_id not in redis_client.hkeys('running_scrapers'):
         scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
         running_scrapers[task_id] = scraper_task
         threading.Thread(target=scraper_task.start_scraping, args=(close_only_mode, reverse_copy)).start()
-        return jsonify({'task_id':task_id})
+        return jsonify({'task_id': task_id})
     else:
         return jsonify({'status': 'error', 'message': f'Scraper {task_id} is already running.'})
 
 
-
 @app.route('/running', methods=['GET'])
 def list_running_scrapers():
-    running_tasks = [{'task_id': task_id, 'link': scraper_task.link, 'running': scraper_task.running} for task_id, scraper_task in running_scrapers.items()]
+    running_tasks = []
+    for task_id, scraper_task in running_scrapers.items():
+        if scraper_task.running:
+            running_tasks.append({'task_id': task_id, 'link': scraper_task.link, 'running': scraper_task.running})
     return jsonify(running_tasks)
 
 
 @app.route('/stop', methods=['POST'])
 def stop_scraping():
-    if request.method == 'POST':
-        data = request.json  # Extract JSON data from request
-        task_id = data.get('task_id')
+    data = request.json
+    task_id = data.get('task_id')
 
-        if task_id in running_scrapers:
-            scraper_task = running_scrapers[task_id]
-            scraper_task.stop()  # Implement stop_scraping method in ScrapeTask class
-            del running_scrapers[task_id]
-            return jsonify({'status': 'success', 'message': f'Scraper {task_id} stopped.'}), 200
-        else:
-            return jsonify({'status': 'error', 'message': f'Scraper {task_id} is not running.'}), 404
-
-
+    if task_id in running_scrapers:
+        scraper_task = running_scrapers[task_id]
+        scraper_task.stop()
+        del running_scrapers[task_id]
+        return jsonify({'status': 'success', 'message': f'Scraper {task_id} stopped.'}), 200
+    else:
+        return jsonify({'status': 'error', 'message': f'Scraper {task_id} is not running.'}), 404
 
 if __name__ == '__main__':
  app.run(debug=True, host='0.0.0.0', port=5000) 
