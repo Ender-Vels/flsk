@@ -73,9 +73,9 @@ class ScrapeTask:
     def initialize_binance_client(self):
         try:
             self.binance_client = Client(self.api_key, self.api_secret)
-            print("Binance client initialized.")
+            logging.info("Binance client initialized.")
         except Exception as e:
-            print(f"Error initializing Binance client: {e}")
+            logging.info(f"Error initializing Binance client: {e}")
             self.running = False
 
     def start_scraping(self, close_only_mode=False, reverse_copy=False):
