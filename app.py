@@ -483,7 +483,10 @@ def start_scrape():
 @app.route('/running', methods=['GET'])
 def list_running_scrapers():
     running_scrapers = redis_client.hgetall("running_scrapers")
-    return jsonify(running_scrapers)
+    # Decode the keys and values
+    running_scrapers_decoded = {key.decode('utf-8'): value.decode('utf-8') for key, value in running_scrapers.items()}
+    return jsonify(running_scrapers_decoded)
+
 
 
 @app.route('/stop', methods=['POST'])
