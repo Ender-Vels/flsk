@@ -4,5 +4,4 @@ binance_futures_connector==4.0.0
 Flask==3.0.3
 python_binance==1.0.19
 redis==5.0.7
-rq==1.16.2
 selenium==4.22.0

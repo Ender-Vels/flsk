@@ -113,7 +113,7 @@ class ScrapeTask:
             self.driver.refresh()
             logging.info("Page refreshed.")
             self.navigate_to_trade_history()
-            
+
     def scrape_and_display_orders(self):
         try:
             while self.running:
@@ -463,7 +463,7 @@ def save_running_scrapers():
 
 def load_running_scrapers():
     global running_scrapers
-    scrapers_data = redis.get("running_scrapers")
+    scrapers_data = redis_client.get("running_scrapers")
     if scrapers_data:
         scrapers_data = json.loads(scrapers_data)
         for task_id, data in scrapers_data.items():
@@ -478,6 +478,9 @@ def load_running_scrapers():
                 threading.Thread(target=scraper_task.start_scraping).start()
             running_scrapers[task_id] = scraper_task
         logging.info("Running scrapers loaded from Redis.")
+    else:
+        logging.info("No running scrapers found in Redis.")
+
 
 
 
