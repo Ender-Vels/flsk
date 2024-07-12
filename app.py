@@ -13,6 +13,7 @@ import time
 import re
 import redis
 import logging
+import uuid
 
 
 app = Flask(__name__)
@@ -459,29 +460,29 @@ def index():
     running_scrapers = redis_client.hgetall("running_scrapers")
     return render_template('index.html', running_scrapers=running_scrapers)
 
+scrape_tasks = {}
+
 @app.route('/start', methods=['POST'])
 def start_scrape():
     data = request.json
-    task_id = data['task_id']
+    task_id = data.get('task_id')
     link = data['link']
     api_key = data['api_key']
     api_secret = data['api_secret']
     leverage = data['leverage']
     trader_portfolio_size = data['trader_portfolio_size']
     your_portfolio_size = data['your_portfolio_size']
+    close_only_mode = data.get('closeOnlyMode', False)
+    reverse_copy = data.get('reverseCopy', False)
 
-    if task_id in scrape_tasks:
-        return jsonify({"status": "error", "message": "Task with this ID already exists"}), 400
+    if not task_id:
+        task_id = str(uuid.uuid4())  # Generate a unique task ID if not provided
 
-    close_only_mode = data.get('close_only_mode', False)
-    reverse_copy = data.get('reverse_copy', False)
+    scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size, close_only_mode, reverse_copy)
+    scrape_tasks[task_id] = scraper_task
+    scraper_task.start()
 
-    task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
-    scrape_tasks[task_id] = task
-
-    threading.Thread(target=task.start_scraping, args=(close_only_mode, reverse_copy)).start()
     return jsonify({"status": "success", "task_id": task_id}), 200
-
 
 @app.route('/running', methods=['GET'])
 def list_running_scrapers():
@@ -496,18 +497,17 @@ def list_running_scrapers():
 def stop_scraping():
     task_id = request.json['task_id']
     print(f"Received request to stop task with ID: {task_id}")  # Debug message
-    
+
     if task_id not in scrape_tasks:
         print(f"Task ID {task_id} not found in scrape_tasks")  # Debug message
         return jsonify({"status": "error", "message": "Task ID not found"}), 404
-    
+
     task = scrape_tasks[task_id]
     task.stop()
     del scrape_tasks[task_id]
-    
+
     print(f"Successfully stopped and removed task with ID: {task_id}")  # Debug message
     return jsonify({"status": "success", "task_id": task_id}), 200
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
