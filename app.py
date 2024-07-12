@@ -15,7 +15,7 @@ import logging
 import redis
 
 app = Flask(__name__)
-redis_url = 'redis://redis://red-cq84086ehbks73fakmug:6379'
+redis_url = 'redis://red-cq84086ehbks73fakmug:6379'
 redis_client = redis.StrictRedis.from_url(redis_url)
 running_scrapers_key = 'running_scrapers'
 
