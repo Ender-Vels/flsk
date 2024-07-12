@@ -116,7 +116,14 @@ class ScrapeTask:
             self.driver.refresh()
             logging.info("Page refreshed.")
             self.navigate_to_trade_history()
-
+    def check_session_status(self):
+        try:
+            self.driver.title  # Перевірка чи ще працює сесія
+        except Exception as e:
+            logging.info(f"Session expired or invalid: {e}")
+            self.initialize_driver()  # Перезапуск вебдрайвера або оновлення сесії
+            self.accept_cookies()
+            self.navigate_to_trade_history()
     def scrape_and_display_orders(self):
         try:
             while self.running:
@@ -181,7 +188,7 @@ class ScrapeTask:
                     self.go_to_first_page()
 
                 self.save_orders_to_file()
-
+                self.check_session_status()
         except Exception as e:
             print(f"Error scraping and displaying orders: {e}")
             self.running = True
