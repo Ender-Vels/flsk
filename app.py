@@ -492,11 +492,17 @@ def list_running_scrapers():
 @app.route('/stop', methods=['POST'])
 def stop_scraping():
     task_id = request.json['task_id']
+    print(f"Received request to stop task with ID: {task_id}")  # Debug message
+    
     if task_id not in scrape_tasks:
+        print(f"Task ID {task_id} not found in scrape_tasks")  # Debug message
         return jsonify({"status": "error", "message": "Task ID not found"}), 404
+    
     task = scrape_tasks[task_id]
     task.stop()
     del scrape_tasks[task_id]
+    
+    print(f"Successfully stopped and removed task with ID: {task_id}")  # Debug message
     return jsonify({"status": "success", "task_id": task_id}), 200
 
 
