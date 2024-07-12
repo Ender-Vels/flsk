@@ -162,21 +162,21 @@
         }
 
         async function updateRunningScrapers() {
-    const response = await fetch('/running');
-    const runningScrapers = await response.json();
-    const scraperList = document.getElementById('scraperList');
-    scraperList.innerHTML = ''; // Clear previous list
+            const response = await fetch('/running');
+            const runningScrapers = await response.json();
+            const scraperList = document.getElementById('scraperList');
+            scraperList.innerHTML = ''; // Clear previous list
 
-    runningScrapers.forEach(scraper => {
-        const li = document.createElement('li');
-        li.classList.add('list-group-item');
-        li.innerHTML = `Task ID: ${scraper.task_id}, Link: ${scraper.link}`;
-        scraperList.appendChild(li);
-    });
-}
+            for (const [task_id, link] of Object.entries(runningScrapers)) {
+                const li = document.createElement('li');
+                li.classList.add('list-group-item');
+                li.innerHTML = `Task ID: ${task_id}, Link: ${link}`;
+                scraperList.appendChild(li);
+            }
+        }
 
-// Call updateRunningScrapers every 5 seconds (adjust as needed)
-setInterval(updateRunningScrapers, 5000);
+        // Call updateRunningScrapers every 5 seconds (adjust as needed)
+        setInterval(updateRunningScrapers, 5000);
 
         function removeScraperFromList(taskId) {
             const scraperList = document.getElementById('scraperList');
