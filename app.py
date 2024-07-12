@@ -473,11 +473,9 @@ def start_scrape():
 @app.route('/running', methods=['GET'])
 def list_running_scrapers():
     running_tasks = []
-    for task_id in redis_client.hkeys('running_scrapers'):
-        task_info = redis_client.hget('running_scrapers', task_id)
-        if task_info:
-            task_info = json.loads(task_info)
-            running_tasks.append({'task_id': task_id.decode('utf-8'), 'link': task_info['link'], 'running': task_info['running']})
+    for task_id, task_info in running_scrapers.items():
+        task_running = task_info.get('running', False)  # Use .get() to safely retrieve 'running' or default to False
+        running_tasks.append({'task_id': task_id.decode('utf-8'), 'link': task_info['link'], 'running': task_running})
     return jsonify(running_tasks)
 
 
