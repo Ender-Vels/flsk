@@ -19,6 +19,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
+
 redis_url = 'redis://red-cq8k8b56l47c73cvjsa0:6379'  # Замените на свой URL Redis
 redis_client = redis.StrictRedis.from_url(redis_url)
 
@@ -61,6 +62,7 @@ class ScrapeTask:
                 chrome_options.add_argument("--disable-gpu")
                 chrome_options.add_argument("--disable-extensions")
                 chrome_options.add_argument("--disable-dev-shm-usage")
+                
                 self.driver = webdriver.Chrome(options=chrome_options)
                 self.driver.get(self.link)
                 logging.info("WebDriver initialized.")
@@ -96,11 +98,11 @@ class ScrapeTask:
     
     def accept_cookies(self):
         try:
-            time.sleep(2)
+            
             accept_btn = self.find_element_with_retry(By.ID, "onetrust-accept-btn-handler")
             accept_btn.click()
             print("Accepted cookies.")
-            time.sleep(2)
+            
         except Exception as e:
             print(f"Error accepting cookies: {e}")
 
@@ -169,7 +171,6 @@ class ScrapeTask:
                             found_data = True
                             logging.info(f"Added order: {order_id}")
                             self.exec_order(symbol, side, quantity, realized_profit)
-                            time.sleep(2)
 
                 if not found_data:
                     logging.info("No data found on current page.")
@@ -180,7 +181,6 @@ class ScrapeTask:
                 self.driver.execute_script("arguments[0].scrollIntoView(true);", next_page_button)
                 next_page_button.click()
                 logging.info("Navigated to next page.")
-                time.sleep(2)
                 self.current_page += 1
 
                 if not self.has_next_page():
@@ -395,7 +395,6 @@ class ScrapeTask:
             except Exception as e:
                 attempts += 1
                 logging.info(f"Error finding element {selector} (Attempt {attempts}/{max_attempts}): {e}")
-                time.sleep(2)
         return None
 
     def has_next_page(self):
