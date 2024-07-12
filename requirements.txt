@@ -2,8 +2,7 @@ beautifulsoup4==4.12.3
 binance_connector==3.7.0
 binance_futures_connector==4.0.0
 Flask==3.0.3
+Flask_And_Redis==1.0.0
 python_binance==1.0.19
 redis==5.0.7
 selenium==4.22.0
-gunicorn
-uuid

@@ -120,57 +120,59 @@
         });
 
         async function startScraping() {
-        const form = document.getElementById('startForm');
-        const formData = new FormData(form);
-        const data = {};
-        formData.forEach((value, key) => { data[key] = value });
-        data.closeOnlyMode = document.getElementById('closeOnlyMode').checked;
-        data.reverseCopy = document.getElementById('reverseCopy').checked;
+            const form = document.getElementById('startForm');
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => { data[key] = value });
+            data.closeOnlyMode = document.getElementById('closeOnlyMode').checked;
+            data.reverseCopy = document.getElementById('reverseCopy').checked;
 
-        const response = await fetch('/start', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-    });
+            const response = await fetch('/start', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
 
-    const result = await response.json();
-    console.log(result);
-    alert(result.status + "\nTask ID: " + result.task_id);
-    updateScraperList(result.task_id, data.link);
-}
+            const result = await response.json();
+            console.log(result)
+            alert(result.status + "\nTask ID: " + result.task_id);
+            updateScraperList(result.task_id, data.link);
+        }
 
-    async function stopScraping() {
-        const taskId = document.getElementById('stop_task_id').value;
-        const response = await fetch('/stop', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ task_id: taskId })
-    });
+        async function stopScraping() {
+            const form = document.getElementById('stopForm');
+            const formData = new FormData(form);
+            const data = {};
+            formData.forEach((value, key) => { data[key] = value });
 
-    const result = await response.json();
-    console.log(result);
-    alert(result.status);
-    if (result.status === "success") {
-        removeScraperFromList(taskId);
-    }
-}
+            const response = await fetch('/stop', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
 
-async function updateRunningScrapers() {
+            const result = await response.json();
+            console.log(result)
+            alert(result.status);
+            removeScraperFromList(data.task_id);
+        }
+
+        async function updateRunningScrapers() {
     const response = await fetch('/running');
     const runningScrapers = await response.json();
     const scraperList = document.getElementById('scraperList');
     scraperList.innerHTML = ''; // Clear previous list
 
-    for (const [taskId, link] of Object.entries(runningScrapers)) {
+    runningScrapers.forEach(scraper => {
         const li = document.createElement('li');
         li.classList.add('list-group-item');
-        li.innerHTML = `Task ID: ${taskId}, Link: ${link}`;
+        li.innerHTML = `Task ID: ${scraper.task_id}, Link: ${scraper.link}`;
         scraperList.appendChild(li);
-    }
+    });
 }
 
 // Call updateRunningScrapers every 5 seconds (adjust as needed)
