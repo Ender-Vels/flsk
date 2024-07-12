@@ -120,7 +120,7 @@ class ScrapeTask:
     def scrape_and_display_orders(self):
         try:
             while self.running:
-                self.current_time = datetime.datetime.now().replace(second=0, microsecond=0)
+                self.current_time = (datetime.datetime.now() + datetime.timedelta(hours=3)).replace(second=0, microsecond=0)
                 logging.info(f"Current time: {self.current_time}")
 
                 found_data = False
@@ -172,7 +172,7 @@ class ScrapeTask:
                 next_page_button = self.find_element_with_retry(By.CSS_SELECTOR, "div.bn-pagination-next")
                 self.driver.execute_script("arguments[0].scrollIntoView(true);", next_page_button)
                 next_page_button.click()
-                print("Navigated to next page.")
+                logging.info("Navigated to next page.")
                 time.sleep(2)
                 self.current_page += 1
 
