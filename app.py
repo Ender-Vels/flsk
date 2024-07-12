@@ -118,7 +118,10 @@ class ScrapeTask:
     def scrape_and_display_orders(self):
         try:
             while self.running:
-                self.current_time = datetime.datetime.now().replace(second=0, microsecond=0)
+                
+
+                self.current_time = datetime.datetime.now().replace(second=0, microsecond=0) + datetime.timedelta(hours=3)
+
                 logging.info(f"Current time: {self.current_time}")
 
                 found_data = False
