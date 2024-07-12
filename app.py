@@ -19,7 +19,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-redis_url = 'redis://red-cq84086ehbks73fakmug:6379'  # Замените на свой URL Redis
+redis_url = 'redis://red-cq8k8b56l47c73cvjsa0:6379'  # Замените на свой URL Redis
 redis_client = redis.StrictRedis.from_url(redis_url)
 
 running_scrapers = {}
