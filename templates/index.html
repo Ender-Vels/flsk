@@ -142,25 +142,22 @@
         }
 
         async function stopScraping() {
-            const form = document.getElementById('stopForm');
-            const formData = new FormData(form);
-            const data = {};
-            formData.forEach((value, key) => { data[key] = value });
+    const taskId = document.getElementById('stop_task_id').value;
+    const response = await fetch('/stop', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ task_id: taskId })
+    });
 
-            const response = await fetch('/stop', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            });
-
-            const result = await response.json();
-            console.log(result)
-            alert(result.status);
-            removeScraperFromList(data.task_id);
-        }
-
+    const result = await response.json();
+    console.log(result);
+    alert(result.status);
+    if (result.status === "success") {
+        removeScraperFromList(taskId);
+    }
+}
         async function updateRunningScrapers() {
             const response = await fetch('/running');
             const runningScrapers = await response.json();
