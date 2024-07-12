@@ -12,13 +12,12 @@ from binance.client import Client
 import time
 import re
 import logging
-from flask_redis import FlaskRedis
 import redis
 
 app = Flask(__name__)
-running_scrapers = {}
-app.config['REDIS_URL'] = 'redis://red-cq84086ehbks73fakmug:6379'  # Update with your Redis URL
-redis_store = FlaskRedis(app)
+redis_url = 'redis://redis://red-cq84086ehbks73fakmug:6379'
+redis_client = redis.StrictRedis.from_url(redis_url)
+running_scrapers_key = 'running_scrapers'
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 class ScrapeTask:
@@ -445,21 +444,6 @@ class ScrapeTask:
                 }
         return list(summarized_orders.values())
     
-    def save_to_redis(self):
-        task_data = {
-            'link': self.link,
-            'api_key': self.api_key,
-            'api_secret': self.api_secret,
-            'leverage': self.leverage,
-            'trader_portfolio_size': self.trader_portfolio_size,
-            'your_portfolio_size': self.your_portfolio_size,
-            'running': self.running
-            # Add other relevant data to store
-        }
-        redis_store.set(self.task_id, json.dumps(task_data))
-
-    def delete_from_redis(self):
-        redis_store.delete(self.task_id)
 
 @app.route('/')
 def index():
@@ -467,53 +451,61 @@ def index():
 
 @app.route('/start', methods=['POST'])
 def start_scrape():
-    form_data = request.json
-    task_id = form_data['task_id']  # Отримати task_id з JSON даних
-    logging.info(task_id)
-    link = form_data['link']
-    api_key = form_data['api_key']
-    api_secret = form_data['api_secret']
-    leverage = form_data['leverage']
-    trader_portfolio_size = form_data['trader_portfolio_size']
-    your_portfolio_size = form_data['your_portfolio_size']
-    close_only_mode = False
-    reverse_copy = False
+    try:
+        data = request.json
+        task_id = data['task_id']
+        link = data['link']
+        api_key = data['api_key']
+        api_secret = data['api_secret']
+        leverage = data['leverage']
+        trader_portfolio_size = data['trader_portfolio_size']
+        your_portfolio_size = data['your_portfolio_size']
 
-    scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size,close_only_mode,
-    reverse_copy)
+        if redis_client.exists(task_id):
+            return jsonify({'status': 'error', 'message': f'Scraper {task_id} is already running.'})
 
-    # Запуск парсера і збереження в Redis
-    scraper_task.start_scraping()
+        scraper_task = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
+        running_scrapers = json.loads(redis_client.get(running_scrapers_key) or '{}')
+        running_scrapers[task_id] = {'link': link, 'running': True}
+        redis_client.set(running_scrapers_key, json.dumps(running_scrapers))
 
-    return jsonify({'task_id': task_id}), 200
+        threading.Thread(target=scraper_task.start_scraping).start()
+
+        return jsonify({'status': 'success', 'message': f'Scraper {task_id} started successfully.'})
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 
 @app.route('/running', methods=['GET'])
 def list_running_scrapers():
-    # Отримання списку запущених парсерів з Redis
-    running_tasks = []
-    for key in redis_store.keys():
-        task_data = json.loads(redis_store.get(key))
-        running_tasks.append({'task_id': key, 'link': task_data['link'], 'running': task_data['running']})
-
-    return jsonify(running_tasks), 200
+    try:
+        running_scrapers = json.loads(redis_client.get(running_scrapers_key) or '{}')
+        return jsonify({'status': 'success', 'data': running_scrapers})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 
 @app.route('/stop', methods=['POST'])
 def stop_scraping():
-    data = request.json
-    task_id = data.get('task_id')
+    try:
+        data = request.json
+        task_id = data['task_id']
 
-    # Перевірка чи задача запущена
-    if task_id in redis_store.keys():
-        # Зупинка парсера
-        scraper_task = ScrapeTask(task_id, "", "", "", 0, 0, 0)  # Потрібні дані для ініціалізації необов'язкові
-        scraper_task.stop()
+        running_scrapers = json.loads(redis_client.get(running_scrapers_key) or '{}')
+        if task_id in running_scrapers:
+            scraper_task = ScrapeTask(task_id, '', '', '', '', '', '')
+            scraper_task.stop()
 
-        return jsonify({'status': 'success', 'message': f'Scraper {task_id} stopped.'}), 200
-    else:
-        return jsonify({'status': 'error', 'message': f'Scraper {task_id} is not running.'}), 404
+            del running_scrapers[task_id]
+            redis_client.set(running_scrapers_key, json.dumps(running_scrapers))
 
+            return jsonify({'status': 'success', 'message': f'Scraper {task_id} stopped.'})
+        else:
+            return jsonify({'status': 'error', 'message': f'Scraper {task_id} is not running.'})
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 if __name__ == '__main__':
     app.run(debug=True)
