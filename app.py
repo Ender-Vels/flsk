@@ -109,12 +109,12 @@ class ScrapeTask:
             move_to_trade_history = self.find_element_with_retry(By.CSS_SELECTOR, "#tab-tradeHistory > div")
             self.driver.execute_script("arguments[0].scrollIntoView(true);", move_to_trade_history)
             move_to_trade_history.click()
-            print("Navigated to trade history tab.")
+            logging.info("Navigated to trade history tab.")
             time.sleep(2)
         except Exception as e:
             print(f"Trade history tab not found: {e}")
             self.driver.refresh()
-            print("Page refreshed.")
+            logging.info("Page refreshed.")
             self.navigate_to_trade_history()
 
     def scrape_and_display_orders(self):
@@ -179,7 +179,6 @@ class ScrapeTask:
                 if not self.has_next_page():
                     print("No next page found. Returning to first page.")
                     self.go_to_first_page()
-                    time.sleep(2)
 
                 self.save_orders_to_file()
 
