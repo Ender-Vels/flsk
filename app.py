@@ -165,7 +165,7 @@ class ScrapeTask:
                             time.sleep(2)
 
                 if not found_data:
-                    print("No data found on current page.")
+                    logging.info("No data found on current page.")
                     self.go_to_first_page()
                     continue
 
@@ -186,7 +186,8 @@ class ScrapeTask:
         except Exception as e:
             print(f"Error scraping and displaying orders: {e}")
             self.running = True
-            self.scrape_and_display_orders()
+            self.initialize_driver()
+            self.scrape_and_display_orders()  # Повторный вызов функции
 
     def exec_order(self, symbol, side, quantity, realized_profit):
         client = self.binance_client
