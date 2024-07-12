@@ -12,19 +12,10 @@ from binance.client import Client
 import time
 import re
 import logging
-import redis
 
 app = Flask(__name__)
-
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-
-
-redis_url = 'redis://red-cq8k8b56l47c73cvjsa0:6379'  # Замените на свой URL Redis
-redis_client = redis.StrictRedis.from_url(redis_url)
-
 running_scrapers = {}
-
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 class ScrapeTask:
     def __init__(self, task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size):
         self.link = link
@@ -50,8 +41,13 @@ class ScrapeTask:
     def stop(self):
         if self.running:
             self.running = False
+            if self.driver:
+                self.driver.quit()
+            if self.timer:
+                self.timer.cancel()
             logging.info(f"Scraper {self.task_id} stopped.")
-            del running_scrapers[self.task_id]
+        else:
+            logging.info(f"Scraper {self.task_id} is not running.")
 
     def initialize_driver(self):
         try:
@@ -62,7 +58,6 @@ class ScrapeTask:
                 chrome_options.add_argument("--disable-gpu")
                 chrome_options.add_argument("--disable-extensions")
                 chrome_options.add_argument("--disable-dev-shm-usage")
-                
                 self.driver = webdriver.Chrome(options=chrome_options)
                 self.driver.get(self.link)
                 logging.info("WebDriver initialized.")
@@ -89,20 +84,13 @@ class ScrapeTask:
         self.running = True
         self.scrape_and_display_orders()
 
-    def to_dict(self):
-        return {
-            'task_id': self.task_id,
-            'link': self.link,
-            'running': self.running
-        }
-    
     def accept_cookies(self):
         try:
-            
+            time.sleep(2)
             accept_btn = self.find_element_with_retry(By.ID, "onetrust-accept-btn-handler")
             accept_btn.click()
             print("Accepted cookies.")
-            
+            time.sleep(2)
         except Exception as e:
             print(f"Error accepting cookies: {e}")
 
@@ -111,25 +99,18 @@ class ScrapeTask:
             move_to_trade_history = self.find_element_with_retry(By.CSS_SELECTOR, "#tab-tradeHistory > div")
             self.driver.execute_script("arguments[0].scrollIntoView(true);", move_to_trade_history)
             move_to_trade_history.click()
-            logging.info("Navigated to trade history tab.")
+            print("Navigated to trade history tab.")
             time.sleep(2)
         except Exception as e:
             print(f"Trade history tab not found: {e}")
             self.driver.refresh()
-            logging.info("Page refreshed.")
+            print("Page refreshed.")
             self.navigate_to_trade_history()
-    def check_session_status(self):
-        try:
-            self.driver.title  # Перевірка чи ще працює сесія
-        except Exception as e:
-            logging.info(f"Session expired or invalid: {e}")
-            self.initialize_driver()  # Перезапуск вебдрайвера або оновлення сесії
-            self.accept_cookies()
-            self.navigate_to_trade_history()
+
     def scrape_and_display_orders(self):
         try:
             while self.running:
-                self.current_time = (datetime.datetime.now() + datetime.timedelta(hours=3)).replace(second=0, microsecond=0)
+                self.current_time = datetime.datetime.now().replace(second=0, microsecond=0)
                 logging.info(f"Current time: {self.current_time}")
 
                 found_data = False
@@ -171,29 +152,31 @@ class ScrapeTask:
                             found_data = True
                             logging.info(f"Added order: {order_id}")
                             self.exec_order(symbol, side, quantity, realized_profit)
+                            time.sleep(2)
 
                 if not found_data:
-                    logging.info("No data found on current page.")
+                    print("No data found on current page.")
                     self.go_to_first_page()
                     continue
 
                 next_page_button = self.find_element_with_retry(By.CSS_SELECTOR, "div.bn-pagination-next")
                 self.driver.execute_script("arguments[0].scrollIntoView(true);", next_page_button)
                 next_page_button.click()
-                logging.info("Navigated to next page.")
+                print("Navigated to next page.")
+                time.sleep(2)
                 self.current_page += 1
 
                 if not self.has_next_page():
                     print("No next page found. Returning to first page.")
                     self.go_to_first_page()
+                    time.sleep(2)
 
                 self.save_orders_to_file()
-                self.check_session_status()
+
         except Exception as e:
             print(f"Error scraping and displaying orders: {e}")
             self.running = True
-            self.initialize_driver()
-            self.scrape_and_display_orders()  # Повторный вызов функции
+            self.scrape_and_display_orders()
 
     def exec_order(self, symbol, side, quantity, realized_profit):
         client = self.binance_client
@@ -395,6 +378,7 @@ class ScrapeTask:
             except Exception as e:
                 attempts += 1
                 logging.info(f"Error finding element {selector} (Attempt {attempts}/{max_attempts}): {e}")
+                time.sleep(2)
         return None
 
     def has_next_page(self):
@@ -471,23 +455,18 @@ def start_scraper():
     if task_id in running_scrapers:
         return jsonify({"status": "error", "message": "Scraper with this ID is already running."}), 400
 
-# Создание нового экземпляра задачи скрапинга
-    scraper = ScrapeTask(task_id, link,api_key,api_secret,leverage,trader_portfolio_size,your_portfolio_size)
+    scraper = ScrapeTask(task_id, link, api_key, api_secret, leverage, trader_portfolio_size, your_portfolio_size)
     running_scrapers[task_id] = scraper
 
-    # Запуск задачи скрапинга в отдельном потоке
     scraper_thread = threading.Thread(target=scraper.start_scraping)
     scraper_thread.start()
-
-    # Сохранение состояния в Redis
-    redis_client.set(task_id, json.dumps(scraper.to_dict()))
 
     return jsonify({"status": "success", "message": f"Scraper {task_id} started successfully."})
 
 @app.route('/running', methods=['GET'])
 def list_running_scrapers():
-    running_list = [scraper.to_dict() for scraper in running_scrapers.values()]
-    return jsonify(running_list)
+    scrapers = [{"task_id": task_id, "link": scraper.link} for task_id, scraper in running_scrapers.items() if scraper.running]
+    return jsonify(scrapers)
 
 @app.route('/stop', methods=['POST'])
 def stop_scraper():
@@ -497,14 +476,16 @@ def stop_scraper():
     if task_id not in running_scrapers:
         return jsonify({"status": "error", "message": "Scraper with this ID is not running."}), 400
 
-    # Остановка задачи скрапинга
     scraper = running_scrapers[task_id]
     scraper.stop()
 
-    # Удаление состояния из Redis
-    redis_client.delete(task_id)
+    del running_scrapers[task_id]
 
     return jsonify({"status": "success", "message": f"Scraper {task_id} stopped successfully."})
 
+if __name__ == '__main__':
+    app.run(debug=True)
 
 
+if __name__ == '__main__':
+    app.run(debug=True)
